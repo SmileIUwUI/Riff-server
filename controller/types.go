@@ -35,3 +35,8 @@ type Module struct {
 	Version  string
 	Config   map[string]any
 }
+
+type CommandBatch struct {
+	Commands         []Command
+	ResultInOneBatch bool
+}
