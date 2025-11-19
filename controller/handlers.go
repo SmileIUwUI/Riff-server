@@ -105,5 +105,28 @@ func (c *Controller) handlerRemoveModule(cmd Command) {
 }
 
 func (c *Controller) handlerListModules(cmd Command) {
+	result := CommandResult{
+		Command: cmd,
+	}
 
+	defer func() {
+		result.Timestamp = time.Now()
+		cmd.Chanback <- result
+		close(cmd.Chanback)
+	}()
+
+	resultMap := make(map[string]any)
+
+	for name, module := range c.Modules {
+		resultMap[name] = map[string]any{
+			"name":    module.Name,
+			"version": module.Version,
+			"config":  module.Config,
+		}
+	}
+
+	result.Result = map[string]any{
+		"modules": resultMap,
+		"count":   len(c.Modules),
+	}
 }
