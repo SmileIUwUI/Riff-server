@@ -7,6 +7,7 @@ type Controller struct {
 	ModulesReceivers []chan Command
 	QueueCommands    []Command
 	ExternalReceiver chan Command
+	commandHandlers  map[CommandType]CommandHandler
 }
 
 func NewController() *Controller {
@@ -17,9 +18,17 @@ func NewController() *Controller {
 		ExternalReceiver: make(chan Command),
 	}
 
+	controller.registerCommandHandlers()
+
 	go controller.commandLoop()
 
 	return controller
+}
+
+func (c *Controller) registerCommandHandlers() {
+	c.commandHandlers[CommandAddModule] = c.handlerAddModule
+	c.commandHandlers[CommandRemoveModule] = c.handlerRemoveModule
+	c.commandHandlers[CommandListModules] = c.handlerListModules
 }
 
 func (c *Controller) commandLoop() {
@@ -50,20 +59,18 @@ func (c *Controller) processExternalCommands() {
 
 func (c *Controller) processInternalCommands() {
 	for _, receiver := range c.ModulesReceivers {
+	ReceiverLoop:
 		for {
 			select {
 			case command, ok := <-receiver:
 				if !ok {
-					break
+					break ReceiverLoop
 				}
-
 				c.QueueCommands = append(c.QueueCommands, command)
 			default:
-				break
+				break ReceiverLoop
 			}
-			break
 		}
-
 	}
 }
 
@@ -80,5 +87,19 @@ func (c *Controller) processExecuteCommands() {
 }
 
 func (c *Controller) executeCommand(cmd Command) {
+	handler, exists := c.commandHandlers[cmd.Type]
 
+	if !exists {
+		result := CommandResult{
+			Command:   cmd,
+			Error:     ErrUnknownCommand,
+			Timestamp: time.Now(),
+		}
+
+		cmd.Chanback <- result
+		close(cmd.Chanback)
+		return
+	}
+
+	handler(cmd)
 }
