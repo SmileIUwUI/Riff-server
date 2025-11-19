@@ -3,18 +3,18 @@ package controller
 import "time"
 
 func (c *Controller) handlerAddModule(cmd Command) {
-	configAny, existsConfig := cmd.Data["config"]
-	constructorAny, existsConstructor := cmd.Data["constructor"]
-
 	result := CommandResult{
-		Command:   cmd,
-		Timestamp: time.Now(),
+		Command: cmd,
 	}
 
 	defer func() {
+		result.Timestamp = time.Now()
 		cmd.Chanback <- result
 		close(cmd.Chanback)
 	}()
+
+	configAny, existsConfig := cmd.Data["config"]
+	constructorAny, existsConstructor := cmd.Data["constructor"]
 
 	if !existsConfig {
 		result.Error = ErrConfigNotFound
@@ -32,9 +32,9 @@ func (c *Controller) handlerAddModule(cmd Command) {
 		return
 	}
 
-	config, okConfig := configAny.(map[string]any)
-	if !okConfig {
-		result.Error = ErrConfigNotFound
+	config, okConfigFormat := configAny.(map[string]any)
+	if !okConfigFormat {
+		result.Error = ErrConfigType
 		return
 	}
 
@@ -67,7 +67,41 @@ func (c *Controller) handlerAddModule(cmd Command) {
 }
 
 func (c *Controller) handlerRemoveModule(cmd Command) {
+	result := CommandResult{
+		Command: cmd,
+	}
 
+	defer func() {
+		result.Timestamp = time.Now()
+		cmd.Chanback <- result
+		close(cmd.Chanback)
+	}()
+
+	nameAny, existsName := cmd.Data["name"]
+
+	if !existsName {
+		result.Error = ErrNameNotFound
+		return
+	}
+
+	name, okNameFormat := nameAny.(string)
+	if !okNameFormat {
+		result.Error = ErrNameType
+		return
+	}
+
+	_, exists := c.Modules[name]
+
+	if !exists {
+		result.Error = ErrModuleNotFound
+		return
+	}
+
+	delete(c.Modules, name)
+
+	result.Result = map[string]any{
+		"name": name,
+	}
 }
 
 func (c *Controller) handlerListModules(cmd Command) {
