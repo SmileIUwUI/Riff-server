@@ -1,21 +1,26 @@
 package controller
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type Controller struct {
-	Modules          map[string]Module
-	ModulesReceivers []chan Command
-	QueueCommands    []Command
-	ExternalReceiver chan Command
+	modules          map[string]Module
+	modulesReceivers []chan Command
+	queueCommands    []Command
+	externalReceiver chan Command
 	commandHandlers  map[CommandType]CommandHandler
 }
 
 func NewController() *Controller {
 	controller := &Controller{
-		Modules:          make(map[string]Module),
-		ModulesReceivers: make([]chan Command, 0),
-		QueueCommands:    make([]Command, 0),
-		ExternalReceiver: make(chan Command),
+		modules:          make(map[string]Module),
+		modulesReceivers: make([]chan Command, 0),
+		queueCommands:    make([]Command, 0),
+		externalReceiver: make(chan Command, 256),
+		commandHandlers:  make(map[CommandType]CommandHandler),
 	}
 
 	controller.registerCommandHandlers()
@@ -23,6 +28,20 @@ func NewController() *Controller {
 	go controller.commandLoop()
 
 	return controller
+}
+
+func (c *Controller) SubmitCommand(commandType CommandType, data map[string]any) <-chan CommandResult {
+	cmd := Command{
+		ID:       uuid.New(),
+		Type:     commandType,
+		Source:   CommandSourceExternal,
+		Sender:   "external",
+		Data:     data,
+		Chanback: make(chan CommandResult, 1),
+	}
+
+	c.externalReceiver <- cmd
+	return cmd.Chanback
 }
 
 func (c *Controller) registerCommandHandlers() {
@@ -46,11 +65,11 @@ func (c *Controller) commandLoop() {
 func (c *Controller) processExternalCommands() {
 	for {
 		select {
-		case command, ok := <-c.ExternalReceiver:
+		case command, ok := <-c.externalReceiver:
 			if !ok {
 				return
 			}
-			c.QueueCommands = append(c.QueueCommands, command)
+			c.queueCommands = append(c.queueCommands, command)
 		default:
 			return
 		}
@@ -58,7 +77,7 @@ func (c *Controller) processExternalCommands() {
 }
 
 func (c *Controller) processInternalCommands() {
-	for _, receiver := range c.ModulesReceivers {
+	for _, receiver := range c.modulesReceivers {
 	ReceiverLoop:
 		for {
 			select {
@@ -66,7 +85,7 @@ func (c *Controller) processInternalCommands() {
 				if !ok {
 					break ReceiverLoop
 				}
-				c.QueueCommands = append(c.QueueCommands, command)
+				c.queueCommands = append(c.queueCommands, command)
 			default:
 				break ReceiverLoop
 			}
@@ -75,15 +94,15 @@ func (c *Controller) processInternalCommands() {
 }
 
 func (c *Controller) processExecuteCommands() {
-	if len(c.QueueCommands) == 0 {
+	if len(c.queueCommands) == 0 {
 		return
 	}
 
-	for _, cmd := range c.QueueCommands {
+	for _, cmd := range c.queueCommands {
 		c.executeCommand(cmd)
 	}
 
-	c.QueueCommands = make([]Command, 0)
+	c.queueCommands = make([]Command, 0)
 }
 
 func (c *Controller) executeCommand(cmd Command) {

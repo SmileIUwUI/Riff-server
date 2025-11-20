@@ -5,3 +5,7 @@ const (
 	CommandRemoveModule CommandType = "remove_module"
 	CommandListModules  CommandType = "list_modules"
 )
+
+const (
+	CommandSourceExternal CommandSource = "external"
+)

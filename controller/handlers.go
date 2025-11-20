@@ -47,12 +47,12 @@ func (c *Controller) handlerAddModule(cmd Command) {
 		return
 	}
 
-	if _, exists := c.Modules[name]; exists {
+	if _, exists := c.modules[name]; exists {
 		result.Error = ErrModuleAlreadyExists
 		return
 	}
 
-	c.Modules[name] = Module{
+	c.modules[name] = Module{
 		Name:     name,
 		Instance: instance,
 		Version:  version,
@@ -62,7 +62,7 @@ func (c *Controller) handlerAddModule(cmd Command) {
 	result.Result = map[string]any{
 		"name":          name,
 		"version":       version,
-		"modules_count": len(c.Modules),
+		"modules_count": len(c.modules),
 	}
 }
 
@@ -90,14 +90,14 @@ func (c *Controller) handlerRemoveModule(cmd Command) {
 		return
 	}
 
-	_, exists := c.Modules[name]
+	_, exists := c.modules[name]
 
 	if !exists {
 		result.Error = ErrModuleNotFound
 		return
 	}
 
-	delete(c.Modules, name)
+	delete(c.modules, name)
 
 	result.Result = map[string]any{
 		"name": name,
@@ -117,7 +117,7 @@ func (c *Controller) handlerListModules(cmd Command) {
 
 	resultMap := make(map[string]any)
 
-	for name, module := range c.Modules {
+	for name, module := range c.modules {
 		resultMap[name] = map[string]any{
 			"name":    module.Name,
 			"version": module.Version,
@@ -127,6 +127,6 @@ func (c *Controller) handlerListModules(cmd Command) {
 
 	result.Result = map[string]any{
 		"modules": resultMap,
-		"count":   len(c.Modules),
+		"count":   len(c.modules),
 	}
 }
