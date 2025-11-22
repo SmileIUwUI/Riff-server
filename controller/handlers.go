@@ -1,6 +1,10 @@
 package controller
 
-import "time"
+import (
+	"fmt"
+	"reflect"
+	"time"
+)
 
 func (c *Controller) handlerAddModule(cmd Command) {
 	result := CommandResult{
@@ -26,22 +30,7 @@ func (c *Controller) handlerAddModule(cmd Command) {
 		return
 	}
 
-	constructor, okConstructorFormat := constructorAny.(ModuleConstructor)
-	if !okConstructorFormat {
-		result.Error = ErrConstructorType
-		return
-	}
-
-	config, okConfigFormat := configAny.(map[string]any)
-	if !okConfigFormat {
-		result.Error = ErrConfigType
-		return
-	}
-
-	receiver := make(chan Command)
-
-	instance, name, version, err := constructor(config, receiver)
-
+	instance, name, version, err := c.callConstructor(constructorAny, configAny)
 	if err != nil {
 		result.Error = err
 		return
@@ -56,7 +45,7 @@ func (c *Controller) handlerAddModule(cmd Command) {
 		Name:     name,
 		Instance: instance,
 		Version:  version,
-		Config:   config,
+		Config:   configAny.(map[string]any),
 	}
 
 	result.Result = map[string]any{
@@ -64,6 +53,63 @@ func (c *Controller) handlerAddModule(cmd Command) {
 		"version":       version,
 		"modules_count": len(c.modules),
 	}
+}
+
+func (c *Controller) callConstructor(constructorAny any, configAny any) (instance any, name string, version string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("constructor panic: %v", r)
+		}
+	}()
+
+	constructorValue := reflect.ValueOf(constructorAny)
+
+	if constructorValue.Kind() != reflect.Func {
+		return nil, "", "", ErrConstructorNotFunction
+	}
+
+	constructorType := constructorValue.Type()
+
+	if constructorType.NumIn() != 2 {
+		return nil, "", "", ErrConstructorInvalidParams
+	}
+
+	if constructorType.NumOut() != 4 {
+		return nil, "", "", ErrConstructorInvalidReturns
+	}
+
+	if constructorType.Out(1).Kind() != reflect.String ||
+		constructorType.Out(2).Kind() != reflect.String {
+		return nil, "", "", ErrConstructorInvalidReturnTypes
+	}
+
+	if !constructorType.Out(3).Implements(reflect.TypeOf((*error)(nil)).Elem()) {
+		return nil, "", "", ErrConstructorLastReturnNotError
+	}
+
+	receiver := make(chan Command)
+
+	config, ok := configAny.(map[string]any)
+	if !ok {
+		return nil, "", "", ErrConfigNotMap
+	}
+
+	args := []reflect.Value{
+		reflect.ValueOf(config),
+		reflect.ValueOf(receiver),
+	}
+
+	results := constructorValue.Call(args)
+
+	instance = results[0].Interface()
+	name = results[1].String()
+	version = results[2].String()
+
+	if errResult := results[3].Interface(); errResult != nil {
+		err = errResult.(error)
+	}
+
+	return instance, name, version, err
 }
 
 func (c *Controller) handlerRemoveModule(cmd Command) {
